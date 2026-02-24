@@ -11,6 +11,30 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+// In-memory rate limiter: 20 requests per hour per user
+const rateLimitMap = new Map();
+const RATE_LIMIT = 20;
+const RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+
+function checkRateLimit(userId) {
+  const now = Date.now();
+  const key = userId;
+  const record = rateLimitMap.get(key);
+
+  if (!record || now - record.windowStart > RATE_WINDOW_MS) {
+    rateLimitMap.set(key, { windowStart: now, count: 1 });
+    return { allowed: true, remaining: RATE_LIMIT - 1 };
+  }
+
+  if (record.count >= RATE_LIMIT) {
+    const resetIn = Math.ceil((record.windowStart + RATE_WINDOW_MS - now) / 60000);
+    return { allowed: false, resetIn };
+  }
+
+  record.count += 1;
+  return { allowed: true, remaining: RATE_LIMIT - record.count };
+}
+
 async function getBusinessContext(dbUserId) {
   const db = getServerSupabase();
 
@@ -159,6 +183,15 @@ export async function POST(request) {
       return NextResponse.json(
         { error: 'AI Chat chỉ dành cho gói Pro. Vui lòng nâng cấp.' },
         { status: 403 },
+      );
+    }
+
+    // Rate limiting: 20 requests per hour per user
+    const rateLimit = checkRateLimit(userId);
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: `Bạn đã vượt quá giới hạn 20 tin nhắn/giờ. Vui lòng thử lại sau ${rateLimit.resetIn} phút.` },
+        { status: 429 },
       );
     }
 

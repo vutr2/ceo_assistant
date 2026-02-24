@@ -109,8 +109,28 @@ export async function GET(request) {
     }
 
     // Already processed — ACK to stop VNPay retrying
-    if (payment.status === 'completed') {
-      console.log('[IPN] Already completed:', txnRef);
+    if (payment.status === 'completed' || payment.status === 'processing') {
+      console.log('[IPN] Already processed:', txnRef, 'status:', payment.status);
+      return vnpayResponse('00', 'Confirm Success');
+    }
+
+    // Lock the payment row to prevent duplicate processing (idempotency)
+    const { createClient } = await import('@supabase/supabase-js');
+    const db = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY,
+    );
+    const { data: locked, error: lockError } = await db
+      .from('payments')
+      .update({ status: 'processing' })
+      .eq('order_id', txnRef)
+      .eq('status', 'pending')
+      .select()
+      .single();
+
+    if (lockError || !locked) {
+      // Another request already grabbed this row
+      console.log('[IPN] Race condition detected, skipping:', txnRef);
       return vnpayResponse('00', 'Confirm Success');
     }
 

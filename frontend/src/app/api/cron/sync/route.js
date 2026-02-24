@@ -58,9 +58,9 @@ async function syncUserSheet(userId, sheet) {
 
 export async function GET(request) {
   try {
-    // Verify cron secret (Vercel sends this header)
+    // Verify cron secret — always required
     const authHeader = request.headers.get('authorization');
-    if (CRON_SECRET && authHeader !== `Bearer ${CRON_SECRET}`) {
+    if (!CRON_SECRET || authHeader !== `Bearer ${CRON_SECRET}`) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

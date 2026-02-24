@@ -15,6 +15,22 @@ export async function POST(request) {
       );
     }
 
+    // Validate amount (must be positive number, max 10M VND)
+    const numAmount = Number(amount);
+    if (!Number.isFinite(numAmount) || numAmount <= 0 || numAmount > 10_000_000) {
+      return NextResponse.json({ error: 'Invalid amount' }, { status: 400 });
+    }
+
+    // Validate planId and cycle
+    const validPlans = ['pro_monthly', 'pro_yearly'];
+    if (!validPlans.includes(planId)) {
+      return NextResponse.json({ error: 'Invalid plan' }, { status: 400 });
+    }
+    const validCycles = ['monthly', 'yearly'];
+    if (cycle && !validCycles.includes(cycle)) {
+      return NextResponse.json({ error: 'Invalid cycle' }, { status: 400 });
+    }
+
     // Generate unique order ID (numbers only, max 8 chars for VNPay)
     const orderId = Date.now().toString().slice(-8);
 
